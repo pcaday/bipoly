@@ -1,3 +1,20 @@
+/*
+ * Automatic simulated annealing-based simplification of models for algebraic curves.
+ *
+ * (c) 2009 Andrew V. Sutherland and Peter Caday
+ *
+ *
+ * This software is distributed as-is, with no warranty of any kind.
+ *
+ */
+
+/*
+	IMPORTANT: This code does not check for overflow of the coefficients, which are always
+	assumed to fit in the data type ct. This may cause problems, even if the input polynomial
+	satisfies these constraints.  You should always verify the output with arbitrary precision
+	arithmetic.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,12 +75,6 @@
 #endif
 
 
-/*
-	IMPORTANT: This code does not check for overflow of the coefficients, which are always assumed to fit in the data type ct.
-	This may cause problems, even if the input polynomial satisfies these constraints.  You should always verify the
-	output independently.
-*/
-
 // Rational data type corresponding to ct
 typedef struct {
 	ct n, d;
@@ -91,27 +102,27 @@ typedef long long ht;
 #ifndef MAX_TERMS
 	#define MAX_TERMS	(MAX_DEGREE+1)*(MAX_DEGREE+1)
 #endif
-#define MAX_MOVES	1000
+#define MAX_MOVES		1000
 #define MAX_SA_MOVES	1000
-#define END_MOVES	4
-#define MAX_STRING	(1<<22)
+#define END_MOVES		4
+#define MAX_STRING		(1<<22)
 
 #define HIGH_PENALTY	200000		// Penalty used in avoidlists for previous minima.
 
 // Command numbers
-#define CMD_ADD1	 1
-#define CMD_SUB1	 2
-#define CMD_ADD2	 3
-#define CMD_SUB2	 4 
-#define CMD_FLIP1	 5
-#define CMD_FLIP2	 6
-#define CMD_SEP1 	 7
-#define CMD_SEP2 	 8
-#define CMD_TOP	 9			// only comands below CMD_TOP are used during search, the rest are cosmetic
-#define CMD_NEG1   (CMD_TOP)
-#define CMD_NEG2 (CMD_TOP+1)
-#define CMD_SWAP (CMD_TOP+2)		// may also be accomplished via sep1,sep2,sep1 or sep2,sep1,sep2
-#define CMD_END   (CMD_TOP+3)		// for the 'loop' function of the user interface
+#define CMD_ADD1	1
+#define CMD_SUB1	2
+#define CMD_ADD2	3
+#define CMD_SUB2	4 
+#define CMD_FLIP1	5
+#define CMD_FLIP2	6
+#define CMD_SEP1 	7
+#define CMD_SEP2 	8
+#define CMD_TOP		9			// only comands below CMD_TOP are used during search, the rest are cosmetic
+#define CMD_NEG1	(CMD_TOP)
+#define CMD_NEG2	(CMD_TOP+1)
+#define CMD_SWAP	(CMD_TOP+2)		// may also be accomplished via sep1,sep2,sep1 or sep2,sep1,sep2
+#define CMD_END		(CMD_TOP+3)		// for the 'loop' function of the user interface
 
 #define CMD_SKEW1P	 109
 #define CMD_SKEW2P	 110
@@ -123,6 +134,7 @@ typedef long long ht;
 #endif
 int SEARCH_DEPTH=8;
 
+// Parameters for the algorithm
 char var1, var2;
 unsigned long random_seed=1;
 float init_temp=1.;
@@ -139,13 +151,12 @@ int sait_runs=0, sa_temp_chg_iters=0;
 int g_mark_accepts=0;
 int compute_maps=1;
 
-// we intentionally don't treat sep and flip as invertible here, they can take out a factor of x or y
+// We intentionally don't treat sep and flip as invertible here, they can take out a factor of x or y
 static int inverse_cmds[CMD_END] = { 0, 2, 1, 4, 3, 0, 0, 0, 0, 9, 10, 11 };
-//static int inverse_cmds[CMD_END] = { 0, 2, 1, 4, 3, 0, 0, 0, 0, 11, 12, 9, 10, 13, 14, 15 };
 // In this table, sep and flip are treated as invertible
 static int inverse_cmds_2[CMD_END] = { 0, 2, 1, 4, 3, 5, 6, 7, 8, 9, 10, 11 };
-//static int inverse_cmds_2[CMD_END] = { 0, 2, 1, 4, 3, 5, 6, 7, 8, 11, 12, 9, 10, 13, 14, 15 };
 
+// Scratch registers
 static ct bc[MAX_DEGREE][MAX_DEGREE];
 static ct coeff[MAX_DEGREE+1][MAX_DEGREE+1];
 
@@ -153,6 +164,7 @@ int sa_move_seq[MAX_SA_MOVES];
 int sa_moves;
 
 
+// Polynomials (struct bipoly) are represented as a sum of monomial terms (struct biterm)
 typedef struct {
 	ct c;
 	short e[2];
@@ -189,6 +201,8 @@ typedef struct {
 bpht bph_tab = {NULL, 0, 0, -1};
 bpht bph_itab = {NULL, 0, 0, -1};
 
+
+// Declarations
 void bipoly_print (bipoly *fs, char v1, char v2, int star, int printInfo, FILE *fp);
 void bipoly_print_sorted2 (bipoly *fs, char v1, char v2, int star, int printInfo, FILE *fp);
 void bipoly_scan (bipoly *fs, char *str, char v1, char v2);
@@ -281,28 +295,28 @@ void bph_append(bpht *t, ht hash, int data);
 
 
 static inline void bipoly_copy(bipoly *fs, bipoly *gs)
-	{ register int i, n; fs->n = n = gs->n; for ( i = 0 ; i < n ; i++ ) fs->t[i] = gs->t[i]; }
+	{ int i, n; fs->n = n = gs->n; for ( i = 0 ; i < n ; i++ ) fs->t[i] = gs->t[i]; }
 
 static inline int bipoly_deg0(bipoly *fs)
-	{ register int i, n = fs->n, e, d = 0; for ( i = 0 ; i < n ; i++ ) { e = fs->t[i].e[0]; if (d < e) d = e; } return d; }
+	{ int i, n = fs->n, e, d = 0; for ( i = 0 ; i < n ; i++ ) { e = fs->t[i].e[0]; if (d < e) d = e; } return d; }
 
 static inline int bipoly_deg1(bipoly *fs)
-	{ register int i, n = fs->n, e, d = 0; for ( i = 0 ; i < n ; i++ ) { e = fs->t[i].e[1]; if (d < e) d = e; } return d; }
+	{ int i, n = fs->n, e, d = 0; for ( i = 0 ; i < n ; i++ ) { e = fs->t[i].e[1]; if (d < e) d = e; } return d; }
 
 static inline int bipoly_deg(bipoly *fs, int var)
-	{ register int i, n = fs->n, e, d = 0; for ( i = 0 ; i < n ; i++ ) { e = fs->t[i].e[var]; if (d < e) d = e; } return d; }
+	{ int i, n = fs->n, e, d = 0; for ( i = 0 ; i < n ; i++ ) { e = fs->t[i].e[var]; if (d < e) d = e; } return d; }
 
 #define bipoly_degs(fs, d0, d1) \
-	{ register int i, n = (fs)->n, e; d0 = d1 = 0; for ( i = 0 ; i < n ; i++ ) { e = (fs)->t[i].e[0]; if ((d0) < e) (d0) = e; \
+	{ int i, n = (fs)->n, e; d0 = d1 = 0; for ( i = 0 ; i < n ; i++ ) { e = (fs)->t[i].e[0]; if ((d0) < e) (d0) = e; \
 						e = (fs)->t[i].e[1]; if ((d1) < e) (d1) = e; } }
 
 // Find the largest monomial dividing fs and store its exponents in d0, d1
 #define bipoly_mon_divider(fs, d0, d1) \
-	{ register int i, n = (fs)->n, e; d0 = d1 = INT_MAX; for ( i = 0 ; i < n ; i++ ) { e = (fs)->t[i].e[0]; if ((d0) > e) (d0) = e; \
+	{ int i, n = (fs)->n, e; d0 = d1 = INT_MAX; for ( i = 0 ; i < n ; i++ ) { e = (fs)->t[i].e[0]; if ((d0) > e) (d0) = e; \
 						e = (fs)->t[i].e[1]; if ((d1) > e) (d1) = e; } }
 // Copy an evaluation vector
 #define evec_copy(dest, src) \
-	{ register int _i; for (_i = 0; _i < 6; _i++) dest[_i]=src[_i]; }
+	{ int _i; for (_i = 0; _i < 6; _i++) dest[_i]=src[_i]; }
 
 inline void bipoly_set_const(bipoly *fs, ct c)
 {
@@ -314,7 +328,6 @@ inline void bipoly_set_const(bipoly *fs, ct c)
 bipoly f, f0, f1, *g[MAX_SEARCH_DEPTH+1], h, h2;
 bipoly bp_tmp[4];
 
-//char bipoly_strbuf[MAX_STRING];
 char bipoly_tmpbuf[MAX_STRING];
 
 char *bipoly_get_strfile(const char *name)
@@ -1026,7 +1039,7 @@ void bipoly_evaluate(bipoly *fs, ct evec[6])
 #ifndef MODULAR
 	ct ftotc;
 #endif
-	register int i, j, d1, d2;
+	int i, j, d1, d2;
 	biterm *f = &fs->t[0];
 	int m = fs->n;
 	
@@ -1074,7 +1087,7 @@ void bipoly_evaluate_moniclike(bipoly *fs)
 	int fmind, fmind_lp, minv;
 	int lt_hi_power, lt_n_monom;
 	int tt_hi_power, tt_n_monom;
-	register int i, d1, d2, d1_lp, d2_lp;
+	int i, d1, d2, d1_lp, d2_lp;
 	biterm *f = &fs->t[0];
 	int m = fs->n;
 	
@@ -1166,11 +1179,11 @@ int bipoly_cmp_evec (ct fevec[6], ct gevec[6])
 // computes f(x+/-1,y) or f(x,y+/-1) depending on var and sign
 void bipoly_trans(bipoly *gs, bipoly *fs, int var, int sign)
 {
-	register int i, j, k, e1, e2, m1, m2;
-	register biterm *f = &fs->t[0];
-	register biterm *g = &gs->t[0];
+	int i, j, k, e1, e2, m1, m2;
+	biterm *f = &fs->t[0];
+	biterm *g = &gs->t[0];
 	int n = fs->n;
-	register ct c;
+	ct c;
 	
 	if ( var < 0 || var > 1 ) { fprintf (stderr, "bipoly_trans: var invalid, must be 0 or 1"); gs->n = 0; return; }
 	m1 = m2 = 0;
@@ -1258,10 +1271,10 @@ void bipoly_trans(bipoly *gs, bipoly *fs, int var, int sign)
 // computes f(x+/-y,y) or f(x,y+/-x) depending on var and sign
 void bipoly_skew(bipoly *gs, bipoly *fs, int var, int sign)
 {
-	register int i, j, k, e1, e2, m;
-	register biterm *f = &fs->t[0];
-	register biterm *g = &gs->t[0];
-	register ct c;
+	int i, j, k, e1, e2, m;
+	biterm *f = &fs->t[0];
+	biterm *g = &gs->t[0];
+	ct c;
 	int n = fs->n;
 	
 	if ( var < 0 || var > 1 ) { fprintf (stderr, "bipoly_skew: var invalid, must be 0 or 1"); gs->n = 0; return; }
@@ -1328,8 +1341,8 @@ void bipoly_skew(bipoly *gs, bipoly *fs, int var, int sign)
 
 void bipoly_sort (bipoly *fs, int var)
 {
-	register int i, j, k, m1, m2;
-	register biterm *f = &fs->t[0];
+	int i, j, k, m1, m2;
+	biterm *f = &fs->t[0];
 	int n = fs->n;
 	
 	m1 = m2 = 0;
@@ -1419,9 +1432,9 @@ void bipoly_sep(bipoly *gs, bipoly *fs, int var)
 
 void bipoly_swap (bipoly *gs, bipoly *fs)
 {
-	register int d, i;
-	register biterm *f = &fs->t[0], *g = &gs->t[0];
-	register int n = fs->n;
+	int d, i;
+	biterm *f = &fs->t[0], *g = &gs->t[0];
+	int n = fs->n;
 
 	if (f == g) {
 		for ( i = 0 ; i < n ; i++ ) { d = f[i].e[0]; f[i].e[0] = f[i].e[1]; f[i].e[1] = d; }	
@@ -1441,7 +1454,7 @@ int bipoly_negcnt (bipoly *fs)
 #if MODULAR
 	return 0;
 #else
-	register int i, m, d, psign;
+	int i, m, d, psign;
 	biterm *f = &fs->t[0];
 	int n = fs->n;
 	
@@ -1461,8 +1474,8 @@ int bipoly_negcnt (bipoly *fs)
 
 void bipoly_neg (bipoly *gs, bipoly *fs, int var)
 {
-	register int i;
-	register biterm *f = &fs->t[0], *g = &gs->t[0];
+	int i;
+	biterm *f = &fs->t[0], *g = &gs->t[0];
 	int n = fs->n;
 	
 	if ( var < 0 || var > 1 ) { fprintf (stderr, "invalid var, must be 0 or 1"); return; }
@@ -1495,7 +1508,7 @@ int bipoly_normalize(bipoly *fs, int *move_seq, int move_seq_len)
 	int n = fs->n;
 	
 	// Make the second variable the one with minimum degree
-bipoly_degs(fs, m1, m2);
+	bipoly_degs(fs, m1, m2);
 	swap = 0;
 	if ( m1 < m2 ) {
 		swap = 1;
@@ -1551,8 +1564,8 @@ char str1n[MAX_STRING], str1d[MAX_STRING], str2n[MAX_STRING], str2d[MAX_STRING],
 */
 void bipoly_print_map (int seq[], int n, char v1, char v2, char w1, char w2)
 {
-	register int i,j;
-	register char *s, *t;
+	int i,j;
+	char *s, *t;
 	
 	str1n[0] = w1; str1n[1] = '\0'; str1d[0] = '\0'; str2n[0] = w2; str2n[1] = '\0'; str2d[0] = '\0';
 	for ( i = n-1 ; i >= 0 ; i-- ) {
@@ -1865,6 +1878,8 @@ void bipoly_print_sorted2 (bipoly *fs, char v1, char v2, int star, int printInfo
 }
 
 
+// Read a bipoly from a string.
+//
 // No longer assumes v1 always preceeds v2 in each term
 // we do not detect overflow if a coefficient is larger than the data type we've chosen for it (this could cause problems!)
 void bipoly_scan (bipoly *fs, char *str, char v1, char v2)
@@ -1878,7 +1893,7 @@ void bipoly_scan (bipoly *fs, char *str, char v1, char v2)
 	termmapp = (char (*)[MAX_DEGREE+1][MAX_DEGREE+1]) calloc(1, (MAX_DEGREE + 1) * (MAX_DEGREE + 1));
 	if (!termmapp) { fprintf(stderr, "Could not allocate memory for term map\n"); exit(1); }
         
-	for ( i = 0 ; i <= MAX_DEGREE ; i++ ) for ( j = 0 ; j <= MAX_DEGREE ; j++ ) (*termmapp)[i][j] = 0;
+//	for ( i = 0 ; i <= MAX_DEGREE ; i++ ) for ( j = 0 ; j <= MAX_DEGREE ; j++ ) (*termmapp)[i][j] = 0;
 	for ( s = str, i = 0 ; ; i++ ) {
 		while ( *s && ! isnumeric(*s) && *s != v1 && *s != v2 ) s++;
 		if ( ! *s ) break;
@@ -1930,7 +1945,7 @@ void bipoly_scan (bipoly *fs, char *str, char v1, char v2)
 			while ( *s && *s != v2 && ! issign(*s) ) s++;
 		}
 		if ( e1 > MAX_DEGREE || e2 > MAX_DEGREE ) { fprintf (stderr, "bipoly: input poly exceeded MAX_DEGREE = %d\n", MAX_DEGREE); exit(0); }
-		if ( (*termmapp)[e1][e2] ) { fprintf (stderr, "bipoly: unsimplified input poly (or out of order variables): two terms with degree (%d,%d) detected\n", e1, e2); exit (0); }
+		if ( (*termmapp)[e1][e2] ) { fprintf (stderr, "bipoly: unsimplified input poly: two terms with degree (%d,%d) detected\n", e1, e2); exit (0); }
 		(*termmapp)[e1][e2] = 1;
 		f[i].c = MS(c, sign);
 		f[i].e[0] = (short)e1;
@@ -1942,6 +1957,7 @@ void bipoly_scan (bipoly *fs, char *str, char v1, char v2)
 	fs->n = i;
 }
 
+// Read a bipoly from a string which is sorted in the second variable.
 void bipoly_scan_sorted2(bipoly *fs, char *str, char v1, char v2)
 {
 	char (*termmapp)[MAX_DEGREE+1][MAX_DEGREE+1];
@@ -1956,7 +1972,6 @@ void bipoly_scan_sorted2(bipoly *fs, char *str, char v1, char v2)
         
 	inparen = 0;
 	
-	for ( i = 0 ; i <= MAX_DEGREE ; i++ ) for ( j = 0 ; j <= MAX_DEGREE ; j++ ) (*termmapp)[i][j] = 0;
 	for ( s = str, i = 0 ; ; ) {
 		while ( *s && ! isnumeric(*s) && *s != v1 && *s != v2 && *s != '(' && *s != ')') s++;
 		if ( ! *s ) break;
@@ -2109,7 +2124,7 @@ void bipolyrat_apply_powers(bipoly *m1n, bipoly *m1d, bipoly *m2n, bipoly *m2d, 
 
 void bipoly_print_map_reduced (int seq[], int n, char v1, char v2, char w1, char w2)
 {
-	register int i;
+	int i;
 	int inSFSeq = 0, newISFS;
 	int m1exp[2], m2exp[2];
 	
@@ -2254,7 +2269,7 @@ void bipoly_print_map_reduced (int seq[], int n, char v1, char v2, char w1, char
 //  Otherwise sets *undef to true and sets ov1->n to the number of moves reached before we got an undefined value.
 void bipoly_apply_map_to_point (int seq[], int n, const ctq *iv1, const ctq *iv2, ctq *ov1, ctq *ov2, int *undef)
 {
-	register int i;
+	int i;
 	ct an, ad, bn, bd, tmp, g;
 	
 	an = iv1->n;  ad = iv1->d;
@@ -2327,7 +2342,7 @@ void bipoly_apply_map_to_point (int seq[], int n, const ctq *iv1, const ctq *iv2
 // Exchange the contents of fs and gs.
 void bipoly_xchg(bipoly *fs, bipoly *gs)
 {
-	register int i, n1, n2;
+	int i, n1, n2;
 	biterm tmp;
 	
 	n1 = fs->n; n2 = gs->n;
@@ -2345,8 +2360,8 @@ void bipoly_xchg(bipoly *fs, bipoly *gs)
 // Compute fs+gs and store the result in fs.
 void bipoly_add(bipoly *fs, bipoly *gs)
 {
-	register int k;
-	register biterm *f = &fs->t[0], *g = &gs->t[0];
+	int k;
+	biterm *f = &fs->t[0], *g = &gs->t[0];
 	int n1 = fs->n, n2 = gs->n, m;
 	ct c;
 	
@@ -2370,8 +2385,8 @@ void bipoly_add(bipoly *fs, bipoly *gs)
 // Compute fs-gs and store the result in fs.
 void bipoly_sub(bipoly *fs, bipoly *gs)
 {
-	register int i, j, k;
-	register biterm *f = &fs->t[0], *g = &gs->t[0];
+	int i, j, k;
+	biterm *f = &fs->t[0], *g = &gs->t[0];
 	int n1 = fs->n, n2 = gs->n, m;
 	ct c;
 	
@@ -2400,9 +2415,9 @@ void bipoly_sub(bipoly *fs, bipoly *gs)
 // Compute fs*gs and store the result in fs.
 void bipoly_mult(bipoly *fs, bipoly *gs)
 {
-	register int i, j, k, fm1, fm2, gm1, gm2, fe0, fe1;
-	register biterm *f = &fs->t[0], *g = &gs->t[0];
-	register ct fc;
+	int i, j, k, fm1, fm2, gm1, gm2, fe0, fe1;
+	biterm *f = &fs->t[0], *g = &gs->t[0];
+	ct fc;
 	int n1 = fs->n, n2 = gs->n;
 	
 	// Compute maximum degrees and prepare coefficient table
@@ -2517,8 +2532,11 @@ int bipoly_equal(bipoly *fs, bipoly *gs)
 	return 1;
 }
 
-// ********* SA *********
-
+/*
+ *
+ * Simulated annealing.
+ *
+ */
 
 // Return random float in the range [0, 1)
 float randomfloat()
@@ -2527,9 +2545,9 @@ float randomfloat()
 }
 
 #define SA_UPDATE_CLOCKS	(CLOCKS_PER_SEC * 240)		// Amount of time between updates of the SA algorithm
-#define SA_DONE_TEMP		(0.000005)			// Temperature at which SA finishes (for sa_maxrad)
-#define SA_TWO_OPS_PER_MOVE	(1)				// 1:  do one or two basic operations per move in SA
-								// 0:  always do one basic operation per move in SA
+#define SA_DONE_TEMP		(0.000005)					// Temperature at which SA finishes (for sa_maxrad)
+#define SA_TWO_OPS_PER_MOVE	(1)							// 1:  do one or two basic operations per move in SA
+														// 0:  always do one basic operation per move in SA
 
 #if RECORD_RAW_SA
 int raw_sa_moves;
@@ -3557,7 +3575,7 @@ ct ct_gcd(ct a, ct b)
 // Initialize the binomial coefficient table
 void bc_init ()
 {
-	register int i, j;
+	int i, j;
 	
 	bc[0][0] = from_i(1);
 	for ( i = 1 ; i <= MAX_DEGREE ; i++ ) {
@@ -3834,19 +3852,11 @@ void bph_finish_insertions()
 	bph_tab.size += bph_itab.size;
 	bph_update_exp(&bph_tab);
 	bph_sort(&bph_tab);	// xxx Just for testing
-				// replace with code that adds the tables together. Then don't search through bph_tab in bph_search.
-				//  This is not only faster but is also more correct.
+						// replace with code that adds the tables together. Then don't search through bph_tab in bph_search.
+						//  This is not only faster but is also more correct.
 	free(bph_itab.e);
 	bph_itab.e = NULL;
 	bph_itab.size = bph_itab.alloc = 0;
-
-
-//	fprintf(stderr, "%x %d %d\n", (int) bph_tab.e, bph_tab.size, bph_tab.alloc);
-//	fprintf(stderr, "%x %d %d\n", (int) bph_itab.e, bph_itab.size, bph_itab.alloc);
-//	{
-//		int i;
-//		for (i = 0; i < bph_tab.size; i++) printf("" HTF " %d\n", bph_tab.e[i].hash, bph_tab.e[i].data);
-//	}
 }
 
 void bph_load(const char *name)
