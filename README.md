@@ -46,7 +46,9 @@ Here the 'xy' (or some other polynomial) is required so bipoly knows the variabl
 
 ## Parameters and Notes
 
-The algorithm bipoly uses is based on simulated annealing, so it's randomized and different runs will give different results. You can ask it to remember previous solutions and avoid them later (which it calls avoidlists) using the -AI and -AO arguments. To simplify a polynomial, it tries applying operations from a small fixed set of simple birational transformations (add, sub, flip, and sep -- described in the usage message). In decreasing order of importance, it's attempting to reduce the degree of the polynomial in each variable, the total degree, the number of terms, the sum of coefficients' absolute value, and maximum coefficient size (the latter two ignored for modular arithmetic of course!).
+The algorithm bipoly uses is based on simulated annealing, so it's randomized and different runs will give different results. You can ask it to remember previous solutions and avoid them later (which it calls avoidlists) using the `-AI` and `-AO` arguments.
+
+To simplify a polynomial, it tries applying operations from a small fixed set of simple birational transformations (add, sub, flip, and sep -- described in the usage message). In decreasing order of importance, it's attempting to reduce the degree of the polynomial in each variable, the total degree, the number of terms, the sum of coefficients' absolute value, and maximum coefficient size (the latter two ignored for modular arithmetic of course!).
 
 There are a lot of parameters to the simulated annealing algorithm, and you can try twiddling them. In particular:
 
