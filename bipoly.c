@@ -36,7 +36,7 @@
 	#define CT_typestr "C 'long'"
 #endif
 #ifdef CT_ll
-	#include "ct_long_long_osx.h"
+	#include "ct_long_long.h"
 	#define CT_typestr "C 'long long'"
 #endif
 #ifdef CT_gmp
