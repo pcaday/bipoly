@@ -52,7 +52,11 @@ To simplify a polynomial, it tries applying operations from a small fixed set of
 
 There are a lot of parameters to the simulated annealing algorithm, and you can try twiddling them. In particular:
 
-* Initial temperature (-T): adjusts how willing the algorithm is to accept unpromising routes at first  
-* Weighting function (-w): the weight function control what the optimizer considers "good" when optimizing the polynomial. You can make your own (in bipoly_cost/bipoly_cost_diff) too.
+* Initial temperature (`-T`): adjusts how willing the algorithm is to accept unpromising routes at first  
+* Weight function (`-w`): the weight function controls what the optimizer considers "good" when optimizing the polynomial. You can examine the existing weight functions in `bipoly_cost`/`bipoly_cost_diff` as well as create new ones.
 
 Also, a note when using the modular arithmetic computations: the optimizer tries to eliminate high-order polynomial terms, and there's a low but nonzero probability it might have made these terms only zero modulo the base rather than truly zero. I've never seen this happen, but it's probably good to check using the arbitrary precision (GMP) code.
+
+## More Information
+
+You can read more about the algorithm in this [poster](http://ants9.loria.fr/slides/poster_caday.pdf), from the ANTS IX conference (2009). 
